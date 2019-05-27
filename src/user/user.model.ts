@@ -1,5 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import {
+  arrayProp,
   prop,
   Typegoose,
   instanceMethod,
@@ -16,9 +17,7 @@ import * as bcrypt from 'bcrypt';
   // create or update
   if (user.isModified('password')) {
     user.password = await bcrypt.hash(user.password, 8);
-    console.log('TCL: user', user);
   }
-  console.log(`before saving`);
   await next();
 })
 export class User extends Typegoose {
@@ -50,6 +49,13 @@ export class User extends Typegoose {
   @prop({ required: true })
   age: number;
 
+  @IsString()
+  @arrayProp({
+    items: String,
+    required: false,
+  })
+  tokens?: string[];
+
   @staticMethod
   static async findByCredential(
     this: ModelType<User> & typeof User,
@@ -58,11 +64,11 @@ export class User extends Typegoose {
   ): Promise<InstanceType<User>> {
     const loggingUser = await this.findOne({ email });
     if (!loggingUser) {
-      return new UnauthorizedException().message;
+      return new UnauthorizedException('email not exist').message;
     }
     const isMatch = await bcrypt.compare(password, loggingUser.password);
     if (!isMatch) {
-      return new UnauthorizedException().message;
+      return new UnauthorizedException('password error').message;
     }
     return loggingUser;
   }

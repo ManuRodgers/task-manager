@@ -7,19 +7,17 @@ import {
   HttpCode,
   Patch,
   Delete,
-  BadRequestException,
   HttpStatus,
+  UseGuards,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { UserService } from './user.service';
+import { AuthGuard } from '../auth/auth.guard';
 import { User } from './user.model';
 import { CreateUserDto, UpdateUserDto, LoginUserDto } from './dto/user.dto';
-
-export interface Result<T> {
-  statusCode?: number;
-  message?: string | T;
-  data?: T;
-  error?: T;
-}
+import { IResult } from '../interfaces/result';
 
 @Controller('users')
 export class UserController {
@@ -27,11 +25,7 @@ export class UserController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createUserDto: CreateUserDto): Promise<Result<User>> {
-    const isValidate = await this.allowedUpdateValidation(createUserDto);
-    if (!isValidate) {
-      return new BadRequestException().message;
-    }
+  async create(@Body() createUserDto: CreateUserDto): Promise<IResult<User>> {
     const res = await this.userService.create(createUserDto);
     if (res.email) {
       return {
@@ -40,19 +34,11 @@ export class UserController {
         data: res,
       };
     }
-    return { message: res, statusCode: HttpStatus.BAD_REQUEST };
+    return { error: res };
   }
   @Post('/login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginUserDto: LoginUserDto): Promise<Result<User>> {
-    const actualLoginFields = Object.keys(loginUserDto);
-    const allowedLoginFields = ['email', 'password'];
-    const isValidate = actualLoginFields.every(actualLoginField =>
-      allowedLoginFields.includes(actualLoginField),
-    );
-    if (!isValidate) {
-      return new BadRequestException().message;
-    }
+  async login(@Body() loginUserDto: LoginUserDto): Promise<IResult<User>> {
     const res = await this.userService.login(loginUserDto);
     if (res.email) {
       return {
@@ -62,18 +48,103 @@ export class UserController {
       };
     }
     return {
-      message: 'email or password error',
       error: res,
     };
   }
 
-  @Get()
-  async findAll(): Promise<User[]> {
-    return await this.userService.findAll();
+  @Post('/logout')
+  @UseGuards(AuthGuard)
+  async logout(@Req() req: Request): Promise<IResult<User>> {
+    try {
+      const currentToken = req.header('authorization').split(' ')[1];
+      const currentUser = req.user;
+      console.log(currentToken, 'currentToken');
+      console.log(currentUser, 'currentUser');
+      req.user.tokens = req.user.tokens.filter(token => token !== currentToken);
+      console.log(req.user.tokens);
+      await req.user.save();
+      return { message: 'logout' };
+    } catch (error) {
+      return new UnauthorizedException().message;
+    }
+  }
+
+  @Post('/logoutAll')
+  @UseGuards(AuthGuard)
+  async logoutAll(@Req() req: Request): Promise<IResult<User>> {
+    try {
+      const { user } = req;
+      if (!user) {
+        return new UnauthorizedException().message;
+      }
+      user.tokens = [];
+      await user.save();
+      return { statusCode: 200, message: 'logout all ' };
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  @Get('/me')
+  @UseGuards(AuthGuard)
+  async getMyProfile(@Req() req: Request): Promise<IResult<User>> {
+    try {
+      const currentToken = req.header('authorization').split(' ')[1];
+      const currentUser = req.user;
+      const currentTokens = req.user.tokens;
+      console.log(currentUser);
+      if (!currentTokens.includes(currentToken)) {
+        return new UnauthorizedException().message;
+      }
+      return await currentUser;
+    } catch (error) {
+      return new UnauthorizedException().message;
+    }
+  }
+
+  @Patch('/me')
+  @UseGuards(AuthGuard)
+  async updateProfile(
+    @Req() req: Request,
+    @Body() updateUserDto: UpdateUserDto,
+  ): Promise<IResult<User>> {
+    try {
+      const { user, body } = req;
+      if (!user) {
+        return new UnauthorizedException().message;
+      }
+      const updates = Object.keys(body);
+      updates.forEach(update => (user[update] = body[update]));
+      await user.save();
+      return {
+        statusCode: 200,
+        message: 'update profile successfully',
+        data: user,
+      };
+    } catch (error) {
+      return { error };
+    }
+  }
+
+  @Delete('/me')
+  @UseGuards(AuthGuard)
+  async deleteYourself(@Req() req: Request): Promise<IResult<User>> {
+    try {
+      const { user } = req;
+      if (!user) {
+        return new UnauthorizedException().message;
+      }
+      await user.remove();
+      return { statusCode: 200, message: 'delete successfully', data: user };
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   @Get('/:id')
-  async findOne(@Param('id') id: number): Promise<User> {
+  async findOne(@Param('id') id: number, @Req() req: Request): Promise<User> {
+    console.log(req.user);
+    console.log(req.header('authorization').split(' ')[1]);
     return await this.userService.findOne(id);
   }
 
@@ -90,11 +161,13 @@ export class UserController {
     return await this.userService.deleteOne(id);
   }
 
-  private async allowedUpdateValidation(
-    dto: CreateUserDto | UpdateUserDto,
-  ): Promise<boolean> {
-    const updates = Object.keys(dto);
-    const allowedUpdates = ['name', 'password', 'email', 'age'];
-    return await updates.every(update => allowedUpdates.includes(update));
-  }
+  // private async allowedPropertiesValidation(
+  //   dto: CreateUserDto | UpdateUserDto | LoginUserDto,
+  //   allowedProperties: string[],
+  // ): Promise<boolean> {
+  //   const actualProperties = Object.keys(dto);
+  //   return await actualProperties.every(actualProperty =>
+  //     allowedProperties.includes(actualProperty),
+  //   );
+  // }
 }
