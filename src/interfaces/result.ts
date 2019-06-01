@@ -3,4 +3,5 @@ export interface IResult<T> {
   message?: string | T;
   data?: T;
   error?: T;
+  token?: string;
 }

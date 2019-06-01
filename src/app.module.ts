@@ -8,13 +8,19 @@ import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { LoggingInterceptor } from './interceptors/logging.interceptor';
+import { EnvConfigService } from './config/env.config.service';
 
 @Module({
   imports: [
-    TypegooseModule.forRoot(`mongodb://127.0.0.1:27017/task-manager-api`, {
-      useNewUrlParser: true,
-      useCreateIndex: true,
-      useFindAndModify: false,
+    TypegooseModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (envConfigService: EnvConfigService) => ({
+        uri: envConfigService.get('MONGODB_URI'),
+        useNewUrlParser: true,
+        useCreateIndex: true,
+        useFindAndModify: false,
+      }),
+      inject: [EnvConfigService],
     }),
     UserModule,
     TaskModule,

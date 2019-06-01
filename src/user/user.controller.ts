@@ -1,22 +1,29 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Param,
+  BadRequestException,
   Body,
-  HttpCode,
-  Patch,
+  Controller,
   Delete,
+  Get,
+  HttpCode,
   HttpStatus,
-  UseGuards,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
   Req,
+  Res,
   UnauthorizedException,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as sharp from 'sharp';
 import { UserService } from './user.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { User } from './user.model';
-import { CreateUserDto, UpdateUserDto, LoginUserDto } from './dto/user.dto';
+import { CreateUserDto, LoginUserDto, UpdateUserDto } from './dto/user.dto';
 import { IResult } from '../interfaces/result';
 
 @Controller('users')
@@ -92,13 +99,60 @@ export class UserController {
       const currentToken = req.header('authorization').split(' ')[1];
       const currentUser = req.user;
       const currentTokens = req.user.tokens;
-      console.log(currentUser);
       if (!currentTokens.includes(currentToken)) {
+        console.log(`error`);
         return new UnauthorizedException().message;
       }
-      return await currentUser;
+      await currentUser.populate({ path: 'tasks' }).execPopulate();
+      return currentUser;
     } catch (error) {
       return new UnauthorizedException().message;
+    }
+  }
+
+  @Post('/me/avatar')
+  @UseGuards(AuthGuard)
+  @UseInterceptors(FileInterceptor('avatar'))
+  async uploadAvatar(@UploadedFile() file, @Req() req: Request) {
+    try {
+      const { user } = req;
+      console.log(user);
+      console.log(file.buffer);
+      user.avatar = await sharp(file.buffer)
+        .resize(250, 250)
+        .png({})
+        .toBuffer();
+      await user.save();
+      return 'upload successfully';
+    } catch (error) {
+      return new BadRequestException(error).message;
+    }
+  }
+
+  @Get('/me/:id/avatar')
+  async getAvatar(@Param('id') id: number, @Res() res: Response) {
+    try {
+      console.log(id);
+      const user = await this.findOne(id);
+      if (!user || !user.avatar) {
+        throw new Error();
+      }
+      res.set('Content-Type', 'image/png');
+      res.send(user.avatar.buffer);
+    } catch (error) {
+      res.status(404).send();
+    }
+  }
+
+  @Delete('/me/avatar')
+  @UseGuards(AuthGuard)
+  async deleteAvatar(@Req() req: Request): Promise<string> {
+    try {
+      req.user.avatar = undefined;
+      await req.user.save();
+      return 'delete avatar successfully';
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -142,9 +196,7 @@ export class UserController {
   }
 
   @Get('/:id')
-  async findOne(@Param('id') id: number, @Req() req: Request): Promise<User> {
-    console.log(req.user);
-    console.log(req.header('authorization').split(' ')[1]);
+  async findOne(@Param('id') id: number): Promise<User> {
     return await this.userService.findOne(id);
   }
 
@@ -160,14 +212,4 @@ export class UserController {
   async deleteOne(@Param('id') id: number): Promise<User> {
     return await this.userService.deleteOne(id);
   }
-
-  // private async allowedPropertiesValidation(
-  //   dto: CreateUserDto | UpdateUserDto | LoginUserDto,
-  //   allowedProperties: string[],
-  // ): Promise<boolean> {
-  //   const actualProperties = Object.keys(dto);
-  //   return await actualProperties.every(actualProperty =>
-  //     allowedProperties.includes(actualProperty),
-  //   );
-  // }
 }

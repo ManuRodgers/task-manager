@@ -21,9 +21,20 @@ export class UserService {
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     try {
-      return await this.userModel.create(createUserDto);
+      const res = await this.userModel.create(createUserDto);
+      if (res.email) {
+        const { user, token } = await this.jwtStrategy.validate({
+          email: res.email,
+        });
+        user.tokens = user.tokens.concat(token);
+        await user.save();
+        return user;
+      } else {
+        console.log(`sign up failed`);
+        return res;
+      }
     } catch (error) {
-      return error.message;
+      return new BadRequestException(error).message;
     }
   }
   async login(loginUserDto: LoginUserDto): Promise<User> {
@@ -31,14 +42,22 @@ export class UserService {
     const res = await this.userModel.findByCredential(email, password);
     try {
       if (res.email) {
-        // login successfully
         const { user, token } = await this.jwtStrategy.validate({
           email: res.email,
         });
-        console.log(`returned token ${token}`);
         user.tokens = user.tokens.concat(token);
         await user.save();
-        return user;
+        const updateUsers = await this.userModel
+          .aggregate()
+          .project({
+            password: 0,
+            avatar: 0,
+            tasks: 0,
+          })
+          .match({
+            email: user.email,
+          });
+        return updateUsers[0];
       } else {
         console.log(`login failed`);
         return res;

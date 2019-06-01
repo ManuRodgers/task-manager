@@ -8,9 +8,12 @@ import {
   InstanceType,
   staticMethod,
   ModelType,
+  Ref,
 } from 'typegoose';
+import { Types } from 'mongoose';
 import { IsString, IsEmail, IsNumber } from 'class-validator';
 import * as bcrypt from 'bcrypt';
+import { Task } from '../task/task.model';
 
 @pre<User>('save', async function(next) {
   const user = this;
@@ -55,6 +58,12 @@ export class User extends Typegoose {
     required: false,
   })
   tokens?: string[];
+
+  @arrayProp({ itemsRef: Task })
+  readonly tasks?: Array<Ref<Task>>;
+
+  @prop({ required: false })
+  readonly avatar?: Types.Buffer;
 
   @staticMethod
   static async findByCredential(

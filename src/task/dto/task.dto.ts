@@ -9,3 +9,12 @@ export class CreateTaskDto {
   @IsOptional()
   readonly completed?: Task['completed'];
 }
+export class UpdateTaskDto {
+  @IsString()
+  @IsOptional()
+  readonly description?: Task['description'];
+
+  @IsBoolean()
+  @IsOptional()
+  readonly completed?: Task['completed'];
+}

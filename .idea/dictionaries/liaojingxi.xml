@@ -2,6 +2,11 @@
   <dictionary name="liaojingxi">
     <words>
       <w>bcrypt</w>
+      <w>dotenv</w>
+      <w>fieldname</w>
+      <w>mimetype</w>
+      <w>originalname</w>
+      <w>typegoose</w>
     </words>
   </dictionary>
 </component>
